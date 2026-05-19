@@ -47,15 +47,20 @@ This document is organized according to the hierarchy:
 ## Epic objective
 
 *   **Business problem:** Citizens need a transparent, auditable system to manage prepayments (VAT and advance payments), apply tax credits to debts, make payments via bank transfer, and track all financial operations with proper accounting entries.
-*   **Value:** 
+*   **Value:**
     *   Automated debt settlement through tax credit allocation
     *   Real-time payment processing and reconciliation
     *   Complete audit trail for all financial operations
     *   Reduced manual intervention and errors
     *   Improved citizen experience with clear debt status
-*   **Out of scope:** 
+*   **In scope:**
+    *   Debt creation and lifecycle management
+    *   Prepayment processing (VAT and advance payments)
+    *   Tax credit management and allocation
+    *   Payment processing via bank transfer
+    *   Accounting entry generation
+*   **Out of scope:**
     *   Tax calculation and assessment
-    *   Debt creation and initial setup
     *   Payment gateway integration (handled separately)
     *   Refund processing
     *   Multi-currency support
@@ -68,7 +73,30 @@ This document is organized according to the hierarchy:
 
 ***
 
-# FEATURE `F-0.1`: `Prepayment and Tax Credit Management`
+# FEATURE `F-0.1`: `Debt Creation and Management`
+
+## Feature objective
+
+*   **Goal:** Enable the system to create, track, and manage tax debts throughout their lifecycle, from creation to settlement.
+*   **Inputs / Triggers:**
+    *   Tax assessment completed
+    *   Administrative fee imposed
+    *   Penalty applied
+    *   Manual debt creation by authorized personnel
+*   **Outputs:**
+    *   Debt record created with unique identifier
+    *   Debt status tracked (PENDING, ACTIVE, PARTIALLY_PAID, SETTLED, CANCELLED)
+    *   Debt balance calculated and maintained
+    *   Notifications sent to citizen
+*   **Dependencies:**
+    *   Tax assessment system
+    *   Citizen management system
+    *   Notification service
+    *   Accounting/Ledger service
+
+***
+
+# FEATURE `F-0.2`: `Prepayment and Tax Credit Management`
 
 ## Feature objective
 
@@ -90,7 +118,7 @@ This document is organized according to the hierarchy:
 
 ***
 
-# FEATURE `F-0.2`: `Payment via Bank Transfer`
+# FEATURE `F-0.3`: `Payment via Bank Transfer`
 
 ## Feature objective
 
@@ -113,7 +141,7 @@ This document is organized according to the hierarchy:
 
 ***
 
-# FEATURE `F-0.3`: `Allocation Management`
+# FEATURE `F-0.4`: `Allocation Management`
 
 ## Feature objective
 
@@ -136,7 +164,134 @@ This document is organized according to the hierarchy:
 
 ***
 
-## USER STORY `US-0.1.1`: `Citizen Makes VAT Prepayment`
+## USER STORY `US-0.1.1`: `Create Tax Debt from Assessment`
+
+### 1. Context and objective
+
+**User Story reference**
+
+*   **ID:** `US-0.1.1`
+*   **Title:** `Create Tax Debt from Assessment`
+*   **Priority:** `Critical`
+*   **As a:** `Tax Assessment System`
+*   **I want:** `To create a debt record when a tax assessment is finalized`
+*   **So that:** `The citizen's tax obligation is properly tracked and can be settled through payments or tax credits`
+
+**Technical objective**
+
+*   Create Debt aggregate from tax assessment data
+*   Generate unique debt identifier with structured reference
+*   Set initial debt status and balance
+*   Generate accounting entries for the debt
+*   Notify citizen of new debt
+
+**Technical prerequisites**
+
+*   Debt aggregate schema and database tables
+*   Structured reference generation service
+*   Accounting/Ledger service API
+*   Notification service API
+*   Tax assessment system integration
+*   Citizen validation service
+
+**Assumptions & out of scope**
+
+*   Assumptions:
+    *   Tax assessment has been validated and approved
+    *   Citizen exists in the system
+    *   Debt amount is positive and within valid range
+*   Out of scope:
+    *   Tax calculation logic
+    *   Assessment approval workflow
+    *   Debt dispute handling
+
+***
+
+## USER STORY `US-0.1.2`: `Update Debt Status and Balance`
+
+### 1. Context and objective
+
+**User Story reference**
+
+*   **ID:** `US-0.1.2`
+*   **Title:** `Update Debt Status and Balance`
+*   **Priority:** `High`
+*   **As a:** `System`
+*   **I want:** `To update debt status and balance when allocations are applied`
+*   **So that:** `The debt lifecycle is accurately tracked and citizens can see their current obligations`
+
+**Technical objective**
+
+*   Apply allocation to debt balance
+*   Update debt status based on remaining balance
+*   Track payment history
+*   Generate accounting entries for balance changes
+*   Publish domain events for status changes
+
+**Technical prerequisites**
+
+*   Debt aggregate with status management
+*   Allocation service integration
+*   Accounting/Ledger service API
+*   Event bus for domain events
+*   Transaction management for consistency
+
+**Assumptions & out of scope**
+
+*   Assumptions:
+    *   Allocation has been validated
+    *   Debt exists and is in payable status
+    *   Concurrent updates are handled via optimistic locking
+*   Out of scope:
+    *   Allocation reversal (handled separately)
+    *   Debt cancellation workflow
+    *   Interest calculation
+
+***
+
+## USER STORY `US-0.1.3`: `Query Debt Status and History`
+
+### 1. Context and objective
+
+**User Story reference**
+
+*   **ID:** `US-0.1.3`
+*   **Title:** `Query Debt Status and History`
+*   **Priority:** `Medium`
+*   **As a:** `Citizen`
+*   **I want:** `To view my current debts and their payment history`
+*   **So that:** `I can understand my tax obligations and track payments`
+
+**Technical objective**
+
+*   Provide API to query debts by citizen ID
+*   Return debt details including current balance and status
+*   Include allocation history for each debt
+*   Support filtering by status and date range
+*   Ensure proper authorization
+
+**Technical prerequisites**
+
+*   Debt query repository
+*   Allocation history tracking
+*   API authentication and authorization
+*   Response pagination support
+*   Performance optimization (indexing)
+
+**Assumptions & out of scope**
+
+*   Assumptions:
+    *   Citizen is authenticated
+    *   Query performance is acceptable with proper indexing
+    *   Data is eventually consistent
+*   Out of scope:
+    *   Real-time updates (polling acceptable)
+    *   Export to PDF/Excel
+    *   Historical data beyond retention period
+
+***
+
+## USER STORY `US-0.2.1`: `Citizen Makes VAT Prepayment`
 
 ### 1. Context and objective
 
@@ -178,7 +333,7 @@ This document is organized according to the hierarchy:
 
 ***
 
-## USER STORY `US-0.2.1`: `Payment via Bank Transfer with Structured Reference`
+## USER STORY `US-0.3.1`: `Payment via Bank Transfer with Structured Reference`
 
 ### 1. Context and objective
 
@@ -222,7 +377,7 @@ This document is organized according to the hierarchy:
 
 ***
 
-## USER STORY `US-0.3.1`: `Automatic Allocation of Tax Credit to Debts`
+## USER STORY `US-0.4.1`: `Automatic Allocation of Tax Credit to Debts`
 
 ### 1. Context and objective
 
