@@ -1,0 +1,681 @@
+{
+  "@context": {
+    "tax": "http://tax-administration.gov/ontology#",
+    "schema": "http://schema.org/",
+    "id": "@id",
+    "type": "@type",
+    "name": "schema:name",
+    "description": "schema:description",
+    "attributes": "tax:attributes",
+    "identityKey": "tax:identityKey",
+    "humanRef": "tax:humanRef",
+    "invariant": "tax:invariant",
+    "hasState": {
+      "@id": "tax:hasState",
+      "@type": "@id"
+    },
+    "initialState": {
+      "@id": "tax:initialState",
+      "@type": "@id"
+    },
+    "terminalStates": {
+      "@id": "tax:terminalStates",
+      "@type": "@id"
+    },
+    "relatesTo": {
+      "@id": "tax:relatesTo",
+      "@type": "@id"
+    },
+    "emitsEvent": {
+      "@id": "tax:emitsEvent",
+      "@type": "@id"
+    },
+    "from": {
+      "@id": "tax:from",
+      "@type": "@id"
+    },
+    "to": {
+      "@id": "tax:to",
+      "@type": "@id"
+    },
+    "precondition": "tax:precondition",
+    "postcondition": "tax:postcondition",
+    "businessRule": "tax:businessRule",
+    "Entity": "tax:Entity",
+    "Operation": "tax:Operation",
+    "State": "tax:State"
+  },
+  "@graph": [
+    {
+      "id": "tax:TaxCredit",
+      "type": "Entity",
+      "name": "TaxCredit",
+      "description": "Manages citizen tax credit balances from prepayments (VAT and advance payments)",
+      "identityKey": "creditId: UUID",
+      "humanRef": "sourceReference",
+      "attributes": {
+        "creditId": "UUID",
+        "citizenId": "UUID",
+        "creditType": "VAT_PREPAYMENT|ADVANCE_PAYMENT",
+        "totalAmount": "Decimal(15,2)",
+        "availableAmount": "Decimal(15,2)",
+        "allocatedAmount": "Decimal(15,2)",
+        "status": "ACTIVE|FULLY_ALLOCATED|EXPIRED|CANCELLED",
+        "sourceReference": "string",
+        "externalPaymentId": "string|null",
+        "expiryDate": "Date",
+        "createdAt": "Timestamp",
+        "updatedAt": "Timestamp",
+        "version": "integer"
+      },
+      "invariant": [
+        "availableAmount + allocatedAmount = totalAmount",
+        "availableAmount >= 0",
+        "Cannot allocate from expired or cancelled credits",
+        "totalAmount must be between €0.01 and €1,000,000",
+        "Credit expires 5 years from creation date"
+      ],
+      "businessRule": [
+        "RG-001: Minimum credit amount €0.01",
+        "RG-002: Maximum credit amount €1,000,000",
+        "RG-003: Credit expiry 5 years from creation",
+        "RG-004: Source reference must be unique",
+        "RG-005: Citizen must be active",
+        "RG-006: Amount invariant: available + allocated = total"
+      ],
+      "hasState": [
+        "tax:TaxCreditActive",
+        "tax:TaxCreditFullyAllocated",
+        "tax:TaxCreditExpired",
+        "tax:TaxCreditCancelled"
+      ],
+      "initialState": "tax:TaxCreditActive",
+      "terminalStates": [
+        "tax:TaxCreditFullyAllocated",
+        "tax:TaxCreditExpired",
+        "tax:TaxCreditCancelled"
+      ],
+      "relatesTo": [
+        "tax:Citizen",
+        "tax:Allocation",
+        "tax:AccountingEntry"
+      ],
+      "emitsEvent": [
+        "tax:TaxCreditCreated",
+        "tax:TaxCreditAllocated",
+        "tax:TaxCreditFullyAllocated",
+        "tax:TaxCreditExpired",
+        "tax:TaxCreditCancelled"
+      ]
+    },
+    {
+      "id": "tax:Debt",
+      "type": "Entity",
+      "name": "Debt",
+      "description": "Manages citizen tax debts and their lifecycle",
+      "identityKey": "debtId: UUID",
+      "humanRef": "structuredReference",
+      "attributes": {
+        "debtId": "UUID",
+        "citizenId": "UUID",
+        "debtType": "INCOME_TAX|PROPERTY_TAX|VAT|OTHER",
+        "originalAmount": "Decimal(15,2)",
+        "remainingAmount": "Decimal(15,2)",
+        "settledAmount": "Decimal(15,2)",
+        "status": "OPEN|PARTIALLY_SETTLED|FULLY_SETTLED|WRITTEN_OFF",
+        "dueDate": "Date",
+        "taxYear": "integer",
+        "structuredReference": "string",
+        "priority": "integer",
+        "createdAt": "Timestamp",
+        "settledAt": "Timestamp|null",
+        "updatedAt": "Timestamp",
+        "version": "integer"
+      },
+      "invariant": [
+        "remainingAmount + settledAmount = originalAmount",
+        "remainingAmount >= 0",
+        "Status transitions must follow defined lifecycle",
+        "structuredReference must follow Belgian format: +++XXX/XXXX/XXXXX+++"
+      ],
+      "businessRule": [
+        "RG-101: Structured reference format validation (Belgian format)",
+        "RG-103: Structured reference must match exactly one active debt",
+        "RG-105: Automatic allocation by priority (oldest due date first)",
+        "RG-106: Debt status transitions: OPEN → PARTIALLY_SETTLED → FULLY_SETTLED"
+      ],
+      "hasState": [
+        "tax:DebtOpen",
+        "tax:DebtPartiallySettled",
+        "tax:DebtFullySettled",
+        "tax:DebtWrittenOff"
+      ],
+      "initialState": "tax:DebtOpen",
+      "terminalStates": [
+        "tax:DebtFullySettled",
+        "tax:DebtWrittenOff"
+      ],
+      "relatesTo": [
+        "tax:Citizen",
+        "tax:Allocation",
+        "tax:Payment",
+        "tax:AccountingEntry"
+      ],
+      "emitsEvent": [
+        "tax:DebtCreated",
+        "tax:DebtPartiallySettled",
+        "tax:DebtFullySettled",
+        "tax:DebtWrittenOff"
+      ]
+    },
+    {
+      "id": "tax:Payment",
+      "type": "Entity",
+      "name": "Payment",
+      "description": "Represents external payments made by citizens via bank transfer",
+      "identityKey": "paymentId: UUID",
+      "humanRef": "bankReference",
+      "attributes": {
+        "paymentId": "UUID",
+        "citizenId": "UUID",
+        "amount": "Decimal(15,2)",
+        "allocatedAmount": "Decimal(15,2)",
+        "unallocatedAmount": "Decimal(15,2)",
+        "paymentDate": "Date",
+        "structuredReference": "string",
+        "bankReference": "string",
+        "status": "RECEIVED|ALLOCATED|PARTIALLY_ALLOCATED|UNALLOCATED|REJECTED",
+        "receivedAt": "Timestamp",
+        "processedAt": "Timestamp|null",
+        "version": "integer"
+      },
+      "invariant": [
+        "allocatedAmount + unallocatedAmount = amount",
+        "unallocatedAmount >= 0",
+        "Structured reference must match an existing debt",
+        "Bank reference must be unique"
+      ],
+      "businessRule": [
+        "RG-102: Payment amount must be positive",
+        "RG-104: Allocation cannot exceed available amounts"
+      ],
+      "hasState": [
+        "tax:PaymentReceived",
+        "tax:PaymentAllocated",
+        "tax:PaymentPartiallyAllocated",
+        "tax:PaymentUnallocated",
+        "tax:PaymentRejected"
+      ],
+      "initialState": "tax:PaymentReceived",
+      "terminalStates": [
+        "tax:PaymentAllocated",
+        "tax:PaymentRejected"
+      ],
+      "relatesTo": [
+        "tax:Citizen",
+        "tax:Debt",
+        "tax:Allocation",
+        "tax:AccountingEntry"
+      ],
+      "emitsEvent": [
+        "tax:PaymentReceived",
+        "tax:PaymentAllocated",
+        "tax:PaymentPartiallyAllocated",
+        "tax:PaymentRejected"
+      ]
+    },
+    {
+      "id": "tax:Allocation",
+      "type": "Entity",
+      "name": "Allocation",
+      "description": "Materializes and tracks the assignment of amounts from TaxCredit or Payment to Debts",
+      "identityKey": "allocationId: UUID",
+      "humanRef": "allocationId",
+      "attributes": {
+        "allocationId": "UUID",
+        "sourceType": "TAX_CREDIT|PAYMENT",
+        "sourceId": "UUID",
+        "debtId": "UUID",
+        "citizenId": "UUID",
+        "amount": "Decimal(15,2)",
+        "allocationDate": "Date",
+        "allocationType": "AUTOMATIC|MANUAL",
+        "status": "PENDING|CONFIRMED|REVERSED",
+        "reversalReason": "string|null",
+        "createdAt": "Timestamp",
+        "confirmedAt": "Timestamp|null",
+        "reversedAt": "Timestamp|null",
+        "version": "integer"
+      },
+      "invariant": [
+        "Amount must be positive",
+        "Cannot exceed source available amount",
+        "Cannot exceed debt remaining amount",
+        "Reversed allocations cannot be modified"
+      ],
+      "businessRule": [
+        "RG-201: Cannot allocate from expired credits",
+        "RG-202: Cannot allocate to fully settled debts",
+        "RG-203: Allocation amount must be positive",
+        "RG-204: Automatic allocation triggered on credit creation if eligible debts exist",
+        "RG-205: Manual allocation requires admin authorization",
+        "RG-206: Reversed allocations restore source and debt balances"
+      ],
+      "hasState": [
+        "tax:AllocationPending",
+        "tax:AllocationConfirmed",
+        "tax:AllocationReversed"
+      ],
+      "initialState": "tax:AllocationPending",
+      "terminalStates": [
+        "tax:AllocationConfirmed",
+        "tax:AllocationReversed"
+      ],
+      "relatesTo": [
+        "tax:TaxCredit",
+        "tax:Payment",
+        "tax:Debt",
+        "tax:Citizen",
+        "tax:AccountingEntry"
+      ],
+      "emitsEvent": [
+        "tax:AllocationCreated",
+        "tax:AllocationConfirmed",
+        "tax:AllocationReversed"
+      ]
+    },
+    {
+      "id": "tax:AccountingEntry",
+      "type": "Entity",
+      "name": "AccountingEntry",
+      "description": "Ensures traceability, auditability, and reconciliation for all financial operations",
+      "identityKey": "entryId: UUID",
+      "humanRef": "entryId",
+      "attributes": {
+        "entryId": "UUID",
+        "operationType": "PREPAYMENT|PAYMENT|ALLOCATION|REVERSAL",
+        "operationId": "UUID",
+        "citizenId": "UUID",
+        "debitAccount": "string",
+        "creditAccount": "string",
+        "amount": "Decimal(15,2)",
+        "description": "string",
+        "fiscalYear": "integer",
+        "entryDate": "Date",
+        "createdAt": "Timestamp",
+        "correlationId": "UUID"
+      },
+      "invariant": [
+        "Every financial operation generates at least one accounting entry",
+        "Debit and credit must balance",
+        "Entries are immutable (append-only)",
+        "Amount must be positive"
+      ],
+      "businessRule": [
+        "RG-301: Every operation generates accounting entries",
+        "RG-302: Entries are immutable (append-only)",
+        "RG-303: Debit and credit must balance",
+        "RG-304: Correlation ID links related entries",
+        "RG-305: Fiscal year determined by operation date"
+      ],
+      "hasState": [
+        "tax:AccountingEntryCreated"
+      ],
+      "initialState": "tax:AccountingEntryCreated",
+      "terminalStates": [
+        "tax:AccountingEntryCreated"
+      ],
+      "relatesTo": [
+        "tax:TaxCredit",
+        "tax:Payment",
+        "tax:Allocation",
+        "tax:Citizen"
+      ],
+      "emitsEvent": [
+        "tax:AccountingEntryGenerated"
+      ]
+    },
+    {
+      "id": "tax:Citizen",
+      "type": "Entity",
+      "name": "Citizen",
+      "description": "Represents a taxpayer citizen in the system",
+      "identityKey": "citizenId: UUID",
+      "humanRef": "taxIdentifier",
+      "attributes": {
+        "citizenId": "UUID",
+        "name": "string",
+        "taxIdentifier": "string",
+        "email": "string|null",
+        "status": "ACTIVE|SUSPENDED|CLOSED",
+        "createdAt": "Timestamp",
+        "updatedAt": "Timestamp"
+      },
+      "invariant": [
+        "taxIdentifier must be unique",
+        "Citizen must have a valid name"
+      ],
+      "businessRule": [
+        "RG-005: Citizen must be active for operations"
+      ],
+      "hasState": [
+        "tax:CitizenActive",
+        "tax:CitizenSuspended",
+        "tax:CitizenClosed"
+      ],
+      "initialState": "tax:CitizenActive",
+      "terminalStates": [
+        "tax:CitizenClosed"
+      ],
+      "relatesTo": [
+        "tax:TaxCredit",
+        "tax:Debt",
+        "tax:Payment",
+        "tax:Allocation"
+      ],
+      "emitsEvent": [
+        "tax:CitizenCreated",
+        "tax:CitizenSuspended",
+        "tax:CitizenReactivated",
+        "tax:CitizenClosed"
+      ]
+    },
+    {
+      "id": "tax:CreateTaxCredit",
+      "type": "Operation",
+      "name": "CreateTaxCredit",
+      "description": "Creates a new tax credit from a prepayment (VAT or advance payment)",
+      "from": "tax:Citizen",
+      "to": "tax:TaxCredit",
+      "precondition": [
+        "Citizen must exist and be active",
+        "Prepayment amount must be between €0.01 and €1,000,000",
+        "Source reference must be unique",
+        "Payment must be validated by external gateway"
+      ],
+      "postcondition": [
+        "TaxCredit is created with status ACTIVE",
+        "availableAmount equals totalAmount",
+        "allocatedAmount is 0",
+        "expiryDate is set to createdAt + 5 years",
+        "Accounting entries are generated",
+        "Automatic allocation check is triggered if eligible debts exist"
+      ]
+    },
+    {
+      "id": "tax:RecordPayment",
+      "type": "Operation",
+      "name": "RecordPayment",
+      "description": "Records a payment received via bank transfer with structured reference",
+      "from": "tax:Citizen",
+      "to": "tax:Payment",
+      "precondition": [
+        "Citizen must exist",
+        "Bank reference must be unique",
+        "Structured reference must be valid format",
+        "Payment amount must be positive",
+        "Payment notification received from banking system"
+      ],
+      "postcondition": [
+        "Payment is created with status RECEIVED",
+        "Debt is identified using structured reference",
+        "Allocation is created linking payment to debt",
+        "Accounting entries are generated",
+        "Payment status updated based on allocation result"
+      ]
+    },
+    {
+      "id": "tax:AllocateCreditToDebt",
+      "type": "Operation",
+      "name": "AllocateCreditToDebt",
+      "description": "Allocates available tax credit to an outstanding debt",
+      "from": "tax:TaxCredit",
+      "to": "tax:Debt",
+      "precondition": [
+        "TaxCredit must be in ACTIVE status",
+        "TaxCredit must not be expired",
+        "TaxCredit must have availableAmount > 0",
+        "Debt must be in OPEN or PARTIALLY_SETTLED status",
+        "Debt must have remainingAmount > 0",
+        "Allocation amount must not exceed available or remaining amounts"
+      ],
+      "postcondition": [
+        "Allocation is created with status PENDING",
+        "TaxCredit availableAmount is reduced",
+        "TaxCredit allocatedAmount is increased",
+        "Debt remainingAmount is reduced",
+        "Debt settledAmount is increased",
+        "Debt status updated if fully settled",
+        "TaxCredit status updated if fully allocated",
+        "Accounting entries are generated",
+        "Allocation status changed to CONFIRMED"
+      ]
+    },
+    {
+      "id": "tax:AllocatePaymentToDebt",
+      "type": "Operation",
+      "name": "AllocatePaymentToDebt",
+      "description": "Allocates payment amount to the identified debt",
+      "from": "tax:Payment",
+      "to": "tax:Debt",
+      "precondition": [
+        "Payment must be in RECEIVED status",
+        "Debt must be identified via structured reference",
+        "Debt must be in OPEN or PARTIALLY_SETTLED status",
+        "Payment must have unallocatedAmount > 0",
+        "Debt must have remainingAmount > 0"
+      ],
+      "postcondition": [
+        "Allocation is created linking payment to debt",
+        "Payment allocatedAmount is increased",
+        "Payment unallocatedAmount is decreased",
+        "Debt remainingAmount is reduced",
+        "Debt settledAmount is increased",
+        "Debt status updated if fully settled",
+        "Payment status updated based on allocation",
+        "Accounting entries are generated"
+      ]
+    },
+    {
+      "id": "tax:ReverseAllocation",
+      "type": "Operation",
+      "name": "ReverseAllocation",
+      "description": "Reverses an existing allocation and restores balances",
+      "from": "tax:Allocation",
+      "to": "tax:Allocation",
+      "precondition": [
+        "Allocation must be in CONFIRMED status",
+        "Reversal reason must be provided",
+        "Admin authorization required"
+      ],
+      "postcondition": [
+        "Allocation status changed to REVERSED",
+        "reversalReason is recorded",
+        "reversedAt timestamp is set",
+        "Source (TaxCredit or Payment) balance is restored",
+        "Debt balance is restored",
+        "Source and Debt statuses are updated accordingly",
+        "Reversal accounting entries are generated"
+      ]
+    },
+    {
+      "id": "tax:CancelTaxCredit",
+      "type": "Operation",
+      "name": "CancelTaxCredit",
+      "description": "Cancels an active tax credit",
+      "from": "tax:TaxCredit",
+      "to": "tax:TaxCredit",
+      "precondition": [
+        "TaxCredit must be in ACTIVE status",
+        "TaxCredit must have no confirmed allocations",
+        "Admin authorization required"
+      ],
+      "postcondition": [
+        "TaxCredit status changed to CANCELLED",
+        "Accounting entries are generated for cancellation"
+      ]
+    },
+    {
+      "id": "tax:AutomaticAllocation",
+      "type": "Operation",
+      "name": "AutomaticAllocation",
+      "description": "Automatically allocates tax credit to eligible debts based on priority rules",
+      "from": "tax:TaxCredit",
+      "to": "tax:Debt",
+      "precondition": [
+        "TaxCredit has availableAmount > 0",
+        "Citizen has outstanding debts",
+        "Debts are in OPEN or PARTIALLY_SETTLED status"
+      ],
+      "postcondition": [
+        "Debts are sorted by priority (oldest due date first)",
+        "Allocations are created for highest priority debts",
+        "Credit is allocated until exhausted or all debts settled",
+        "Multiple allocation records may be created",
+        "All affected entities are updated",
+        "Accounting entries are generated for each allocation"
+      ]
+    },
+    {
+      "id": "tax:GenerateAccountingEntry",
+      "type": "Operation",
+      "name": "GenerateAccountingEntry",
+      "description": "Generates immutable accounting entries for financial operations",
+      "from": ["tax:TaxCredit", "tax:Payment", "tax:Allocation"],
+      "to": "tax:AccountingEntry",
+      "precondition": [
+        "Financial operation must be completed",
+        "Operation type must be defined",
+        "Chart of accounts codes must be valid",
+        "Amount must be positive"
+      ],
+      "postcondition": [
+        "AccountingEntry is created with all required fields",
+        "Debit and credit accounts are recorded",
+        "correlationId links related entries",
+        "Entry is immutable after creation",
+        "Fiscal year is determined from operation date"
+      ]
+    },
+    {
+      "id": "tax:TaxCreditActive",
+      "type": "State",
+      "name": "TaxCreditActive",
+      "description": "Tax credit is active and available for allocation"
+    },
+    {
+      "id": "tax:TaxCreditFullyAllocated",
+      "type": "State",
+      "name": "TaxCreditFullyAllocated",
+      "description": "Tax credit has been fully allocated to debts (availableAmount = 0)"
+    },
+    {
+      "id": "tax:TaxCreditExpired",
+      "type": "State",
+      "name": "TaxCreditExpired",
+      "description": "Tax credit has expired (5 years after creation)"
+    },
+    {
+      "id": "tax:TaxCreditCancelled",
+      "type": "State",
+      "name": "TaxCreditCancelled",
+      "description": "Tax credit has been cancelled by administrator"
+    },
+    {
+      "id": "tax:DebtOpen",
+      "type": "State",
+      "name": "DebtOpen",
+      "description": "Debt is open and awaiting payment or allocation"
+    },
+    {
+      "id": "tax:DebtPartiallySettled",
+      "type": "State",
+      "name": "DebtPartiallySettled",
+      "description": "Debt has received partial payment or allocation"
+    },
+    {
+      "id": "tax:DebtFullySettled",
+      "type": "State",
+      "name": "DebtFullySettled",
+      "description": "Debt has been fully paid or allocated (remainingAmount = 0)"
+    },
+    {
+      "id": "tax:DebtWrittenOff",
+      "type": "State",
+      "name": "DebtWrittenOff",
+      "description": "Debt has been written off by administrative decision"
+    },
+    {
+      "id": "tax:PaymentReceived",
+      "type": "State",
+      "name": "PaymentReceived",
+      "description": "Payment has been received from banking system"
+    },
+    {
+      "id": "tax:PaymentAllocated",
+      "type": "State",
+      "name": "PaymentAllocated",
+      "description": "Payment has been fully allocated to debt(s)"
+    },
+    {
+      "id": "tax:PaymentPartiallyAllocated",
+      "type": "State",
+      "name": "PaymentPartiallyAllocated",
+      "description": "Payment has been partially allocated, remainder unallocated"
+    },
+    {
+      "id": "tax:PaymentUnallocated",
+      "type": "State",
+      "name": "PaymentUnallocated",
+      "description": "Payment could not be allocated (debt not found or invalid)"
+    },
+    {
+      "id": "tax:PaymentRejected",
+      "type": "State",
+      "name": "PaymentRejected",
+      "description": "Payment has been rejected due to validation failure"
+    },
+    {
+      "id": "tax:AllocationPending",
+      "type": "State",
+      "name": "AllocationPending",
+      "description": "Allocation has been created but not yet confirmed"
+    },
+    {
+      "id": "tax:AllocationConfirmed",
+      "type": "State",
+      "name": "AllocationConfirmed",
+      "description": "Allocation has been confirmed and applied"
+    },
+    {
+      "id": "tax:AllocationReversed",
+      "type": "State",
+      "name": "AllocationReversed",
+      "description": "Allocation has been reversed and balances restored"
+    },
+    {
+      "id": "tax:CitizenActive",
+      "type": "State",
+      "name": "CitizenActive",
+      "description": "Citizen account is active and can perform operations"
+    },
+    {
+      "id": "tax:CitizenSuspended",
+      "type": "State",
+      "name": "CitizenSuspended",
+      "description": "Citizen account is temporarily suspended"
+    },
+    {
+      "id": "tax:CitizenClosed",
+      "type": "State",
+      "name": "CitizenClosed",
+      "description": "Citizen account has been permanently closed"
+    },
+    {
+      "id": "tax:AccountingEntryCreated",
+      "type": "State",
+      "name": "AccountingEntryCreated",
+      "description": "Accounting entry has been created (immutable)"
+    }
+  ]
+}
