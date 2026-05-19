@@ -1,0 +1,843 @@
+{
+  "@context": {
+    "ica": "http://ica-context-studio.org/schema#",
+    "schema": "http://schema.org/",
+    "tax": "https://tax-management.example.org/schema/",
+    "id": "@id",
+    "type": "@type",
+    "name": "schema:name",
+    "description": "schema:description",
+    "attributes": "ica:attributes",
+    "identityKey": "ica:identityKey",
+    "humanRef": "ica:humanRef",
+    "invariant": "ica:invariant",
+    "hasState": {
+      "@id": "ica:hasState",
+      "@type": "@id"
+    },
+    "initialState": {
+      "@id": "ica:initialState",
+      "@type": "@id"
+    },
+    "terminalStates": {
+      "@id": "ica:terminalStates",
+      "@type": "@id"
+    },
+    "relatesTo": {
+      "@id": "ica:relatesTo",
+      "@type": "@id"
+    },
+    "emitsEvent": {
+      "@id": "ica:emitsEvent",
+      "@type": "@id"
+    },
+    "from": {
+      "@id": "ica:from",
+      "@type": "@id"
+    },
+    "to": {
+      "@id": "ica:to",
+      "@type": "@id"
+    },
+    "precondition": "ica:precondition",
+    "postcondition": "ica:postcondition",
+    "businessRule": "ica:businessRule",
+    "Entity": "ica:Entity",
+    "Operation": "ica:Operation",
+    "Action": "ica:Action",
+    "State": "ica:State",
+    "Constraint": "ica:Constraint"
+  },
+  "@graph": [
+    {
+      "id": "tax:TaxCredit",
+      "type": "Entity",
+      "name": "TaxCredit",
+      "description": "Aggregate root managing citizen's tax credit balance from prepayments (VAT and advance payments)",
+      "identityKey": "id: UUID",
+      "humanRef": "citizenId",
+      "attributes": {
+        "id": "UUID",
+        "citizenId": "string(50) UNIQUE",
+        "currentBalance": "decimal(12,2)",
+        "totalPrepayments": "decimal(12,2)",
+        "totalAllocations": "decimal(12,2)",
+        "currency": "string(3)",
+        "version": "integer",
+        "createdAt": "timestamp",
+        "updatedAt": "timestamp"
+      },
+      "invariant": [
+        "Balance = Total Prepayments - Total Allocations (RG-002)",
+        "Balance cannot be negative",
+        "All operations must be auditable",
+        "Currency must be consistent across all operations (RG-007)"
+      ],
+      "hasState": [
+        "tax:TaxCreditActive",
+        "tax:TaxCreditDepleted",
+        "tax:TaxCreditSuspended"
+      ],
+      "initialState": "tax:TaxCreditActive",
+      "relatesTo": [
+        "tax:Prepayment",
+        "tax:Allocation",
+        "tax:Citizen"
+      ],
+      "emitsEvent": [
+        "tax:TaxCreditCreated",
+        "tax:TaxCreditUpdated",
+        "tax:TaxCreditDepleted"
+      ],
+      "businessRule": [
+        "RG-002",
+        "RG-007",
+        "RG-010"
+      ]
+    },
+    {
+      "id": "tax:Prepayment",
+      "type": "Entity",
+      "name": "Prepayment",
+      "description": "Entity representing a prepayment made by a citizen (VAT prepayment or advance payment)",
+      "identityKey": "id: UUID",
+      "humanRef": "prepaymentId",
+      "attributes": {
+        "id": "UUID",
+        "prepaymentId": "string(50) UNIQUE",
+        "taxCreditId": "UUID FK(TaxCredit)",
+        "citizenId": "string(50)",
+        "prepaymentType": "enum(VAT_PREPAYMENT, ADVANCE_PAYMENT)",
+        "amount": "decimal(12,2)",
+        "paymentReference": "string(50) UNIQUE",
+        "status": "enum(PENDING, COMPLETED, FAILED)",
+        "idempotencyKey": "UUID UNIQUE",
+        "createdAt": "timestamp"
+      },
+      "invariant": [
+        "Amount must be > 0 and ≤ 999,999.99 (RG-001)",
+        "Payment reference must be unique",
+        "Idempotency key ensures duplicate requests return same result (RG-003)"
+      ],
+      "hasState": [
+        "tax:PrepaymentPending",
+        "tax:PrepaymentCompleted",
+        "tax:PrepaymentFailed"
+      ],
+      "initialState": "tax:PrepaymentPending",
+      "terminalStates": [
+        "tax:PrepaymentCompleted",
+        "tax:PrepaymentFailed"
+      ],
+      "relatesTo": [
+        "tax:TaxCredit",
+        "tax:AccountingEntry"
+      ],
+      "emitsEvent": [
+        "tax:PrepaymentCreated",
+        "tax:PrepaymentCompleted",
+        "tax:PrepaymentFailed"
+      ],
+      "businessRule": [
+        "RG-001",
+        "RG-003"
+      ]
+    },
+    {
+      "id": "tax:Payment",
+      "type": "Entity",
+      "name": "Payment",
+      "description": "Aggregate root representing a payment made via bank transfer with structured reference",
+      "identityKey": "id: UUID",
+      "humanRef": "paymentId",
+      "attributes": {
+        "id": "UUID",
+        "paymentId": "string(50) UNIQUE",
+        "bankReference": "string(50) UNIQUE",
+        "structuredReference": "string(50) PATTERN(+++XXX/XXXX/XXXXX+++)",
+        "debtId": "string(50)",
+        "amount": "decimal(12,2)",
+        "currency": "string(3)",
+        "paymentDate": "date",
+        "debtorAccount": "string(34) IBAN",
+        "debtorName": "string(100)",
+        "status": "enum(RECEIVED, PROCESSING, ALLOCATED, FAILED)",
+        "createdAt": "timestamp"
+      },
+      "invariant": [
+        "Payment amount must be positive",
+        "Structured reference must be valid format +++XXX/XXXX/XXXXX+++ (RG-004)",
+        "Payment can only be applied once (RG-009)",
+        "Bank reference must be unique"
+      ],
+      "hasState": [
+        "tax:PaymentReceived",
+        "tax:PaymentProcessing",
+        "tax:PaymentAllocated",
+        "tax:PaymentFailed"
+      ],
+      "initialState": "tax:PaymentReceived",
+      "terminalStates": [
+        "tax:PaymentAllocated",
+        "tax:PaymentFailed"
+      ],
+      "relatesTo": [
+        "tax:Debt",
+        "tax:Allocation",
+        "tax:AccountingEntry"
+      ],
+      "emitsEvent": [
+        "tax:PaymentReceived",
+        "tax:PaymentProcessed",
+        "tax:PaymentAllocated"
+      ],
+      "businessRule": [
+        "RG-004",
+        "RG-009"
+      ]
+    },
+    {
+      "id": "tax:Allocation",
+      "type": "Entity",
+      "name": "Allocation",
+      "description": "Aggregate root materializing and tracking assignment of credit/payment to debt",
+      "identityKey": "id: UUID",
+      "humanRef": "allocationId",
+      "attributes": {
+        "id": "UUID",
+        "allocationId": "string(50) UNIQUE",
+        "sourceType": "enum(TAX_CREDIT, PAYMENT)",
+        "sourceId": "UUID",
+        "debtId": "string(50)",
+        "amount": "decimal(12,2)",
+        "currency": "string(3)",
+        "status": "enum(PENDING, APPLIED, REVERSED)",
+        "allocationDate": "timestamp",
+        "appliedDate": "timestamp",
+        "createdAt": "timestamp"
+      },
+      "invariant": [
+        "Allocation amount must not exceed source amount (RG-008)",
+        "Allocation must reference valid source and target",
+        "Once applied, allocation is immutable",
+        "Currency must match source and target (RG-007)"
+      ],
+      "hasState": [
+        "tax:AllocationPending",
+        "tax:AllocationApplied",
+        "tax:AllocationReversed"
+      ],
+      "initialState": "tax:AllocationPending",
+      "terminalStates": [
+        "tax:AllocationApplied",
+        "tax:AllocationReversed"
+      ],
+      "relatesTo": [
+        "tax:TaxCredit",
+        "tax:Payment",
+        "tax:Debt",
+        "tax:AccountingEntry"
+      ],
+      "emitsEvent": [
+        "tax:AllocationCreated",
+        "tax:AllocationApplied",
+        "tax:AllocationReversed"
+      ],
+      "businessRule": [
+        "RG-005",
+        "RG-007",
+        "RG-008"
+      ]
+    },
+    {
+      "id": "tax:Debt",
+      "type": "Entity",
+      "name": "Debt",
+      "description": "Aggregate root managing debt lifecycle and settlement",
+      "identityKey": "id: string(50)",
+      "humanRef": "id",
+      "attributes": {
+        "id": "string(50)",
+        "citizenId": "string(50)",
+        "debtType": "enum(PENALTY, TAX_DEBT, ADMINISTRATIVE_FEE)",
+        "originalAmount": "decimal(12,2)",
+        "remainingBalance": "decimal(12,2)",
+        "currency": "string(3)",
+        "status": "enum(OUTSTANDING, PARTIALLY_PAID, SETTLED)",
+        "priority": "integer",
+        "createdAt": "timestamp"
+      },
+      "invariant": [
+        "Debt balance = Original amount - Sum of allocations",
+        "Debt cannot be overpaid",
+        "Settled debts cannot receive new allocations",
+        "Priority determines allocation order (RG-005)"
+      ],
+      "hasState": [
+        "tax:DebtOutstanding",
+        "tax:DebtPartiallyPaid",
+        "tax:DebtSettled"
+      ],
+      "initialState": "tax:DebtOutstanding",
+      "terminalStates": [
+        "tax:DebtSettled"
+      ],
+      "relatesTo": [
+        "tax:Allocation",
+        "tax:Payment",
+        "tax:Citizen"
+      ],
+      "emitsEvent": [
+        "tax:DebtCreated",
+        "tax:DebtPartiallyPaid",
+        "tax:DebtSettled"
+      ],
+      "businessRule": [
+        "RG-005"
+      ]
+    },
+    {
+      "id": "tax:AccountingEntry",
+      "type": "Entity",
+      "name": "AccountingEntry",
+      "description": "Entity representing a double-entry bookkeeping entry for audit trail",
+      "identityKey": "id: UUID",
+      "humanRef": "entryId",
+      "attributes": {
+        "id": "UUID",
+        "entryId": "string(50) UNIQUE",
+        "transactionId": "UUID",
+        "transactionType": "enum(PREPAYMENT, BANK_TRANSFER, TAX_CREDIT_ALLOCATION, PAYMENT_ALLOCATION)",
+        "sourceReference": "string(50)",
+        "accountCode": "string(20)",
+        "entryType": "enum(DEBIT, CREDIT)",
+        "amount": "decimal(12,2)",
+        "fiscalYear": "integer",
+        "entryDate": "date",
+        "createdAt": "timestamp"
+      },
+      "invariant": [
+        "Accounting entries must balance: Debit = Credit (RG-006)",
+        "Transaction ID groups related entries",
+        "All amounts in same transaction must use same currency (RG-007)"
+      ],
+      "relatesTo": [
+        "tax:TaxCredit",
+        "tax:Payment",
+        "tax:Allocation"
+      ],
+      "emitsEvent": [
+        "tax:AccountingEntriesGenerated"
+      ],
+      "businessRule": [
+        "RG-006",
+        "RG-007"
+      ]
+    },
+    {
+      "id": "tax:Citizen",
+      "type": "Entity",
+      "name": "Citizen",
+      "description": "Entity representing a citizen taxpayer",
+      "identityKey": "citizenId: string(50)",
+      "humanRef": "citizenId",
+      "attributes": {
+        "citizenId": "string(50) UNIQUE",
+        "name": "string(100)",
+        "taxIdentifier": "string(50)",
+        "status": "enum(ACTIVE, SUSPENDED, INACTIVE)"
+      },
+      "invariant": [
+        "Citizens can only access their own tax credits and payments (RG-010)"
+      ],
+      "relatesTo": [
+        "tax:TaxCredit",
+        "tax:Debt",
+        "tax:Prepayment"
+      ],
+      "businessRule": [
+        "RG-010"
+      ]
+    },
+    {
+      "id": "tax:CreatePrepayment",
+      "type": "Action",
+      "name": "CreatePrepayment",
+      "description": "Create a new prepayment (VAT or advance payment) that feeds into tax credit",
+      "from": "tax:Citizen",
+      "to": "tax:TaxCredit",
+      "precondition": [
+        "Citizen is authenticated and authorized",
+        "Payment has been validated by payment gateway",
+        "Amount is > 0 and ≤ 999,999.99 (RG-001)",
+        "Idempotency key is unique (RG-003)"
+      ],
+      "postcondition": [
+        "Prepayment entity created",
+        "TaxCredit balance updated",
+        "Accounting entries generated (DEBIT: 1000 Bank, CREDIT: 2100 Tax Credit Liability)",
+        "PrepaymentCreated event published",
+        "Automatic allocation rules triggered if debts exist"
+      ],
+      "emitsEvent": [
+        "tax:PrepaymentCreated",
+        "tax:TaxCreditUpdated",
+        "tax:AccountingEntriesGenerated"
+      ],
+      "businessRule": [
+        "RG-001",
+        "RG-002",
+        "RG-003",
+        "RG-006"
+      ]
+    },
+    {
+      "id": "tax:ProcessBankTransfer",
+      "type": "Action",
+      "name": "ProcessBankTransfer",
+      "description": "Process a bank transfer payment with structured reference to settle a specific debt",
+      "from": "tax:BankingSystem",
+      "to": "tax:Debt",
+      "precondition": [
+        "Bank provides payment notification in standard format",
+        "Structured reference format is valid +++XXX/XXXX/XXXXX+++ (RG-004)",
+        "Debt exists and is in payable status",
+        "Bank reference is unique"
+      ],
+      "postcondition": [
+        "Payment entity created",
+        "Allocation created linking payment to debt",
+        "Debt balance updated",
+        "Accounting entries generated (DEBIT: 1000 Bank, CREDIT: 1200 Accounts Receivable)",
+        "PaymentReceived event published"
+      ],
+      "emitsEvent": [
+        "tax:PaymentReceived",
+        "tax:AllocationCreated",
+        "tax:AccountingEntriesGenerated"
+      ],
+      "businessRule": [
+        "RG-004",
+        "RG-006",
+        "RG-009"
+      ]
+    },
+    {
+      "id": "tax:AllocateTaxCreditToDebt",
+      "type": "Action",
+      "name": "AllocateTaxCreditToDebt",
+      "description": "Automatically allocate available tax credit to outstanding debts based on priority rules",
+      "from": "tax:TaxCredit",
+      "to": "tax:Debt",
+      "precondition": [
+        "Tax credit has available balance > 0",
+        "Outstanding debts exist for citizen",
+        "Allocation rules are configured and validated",
+        "Debt is not settled"
+      ],
+      "postcondition": [
+        "Allocation records created",
+        "Tax credit balance reduced",
+        "Debt balance updated",
+        "Accounting entries generated (DEBIT: 2100 Tax Credit Liability, CREDIT: 1200 Accounts Receivable)",
+        "AllocationCreated event published",
+        "If debt settled, DebtSettled event published"
+      ],
+      "emitsEvent": [
+        "tax:AllocationCreated",
+        "tax:AllocationApplied",
+        "tax:TaxCreditUpdated",
+        "tax:DebtSettled",
+        "tax:AccountingEntriesGenerated"
+      ],
+      "businessRule": [
+        "RG-002",
+        "RG-005",
+        "RG-006",
+        "RG-008"
+      ]
+    },
+    {
+      "id": "tax:ApplyAllocation",
+      "type": "Action",
+      "name": "ApplyAllocation",
+      "description": "Apply a pending allocation to reduce debt balance",
+      "from": "tax:Allocation",
+      "to": "tax:Debt",
+      "precondition": [
+        "Allocation is in PENDING state",
+        "Debt exists and is not settled",
+        "Allocation amount does not exceed debt balance"
+      ],
+      "postcondition": [
+        "Allocation status changed to APPLIED",
+        "Debt balance reduced by allocation amount",
+        "If debt balance = 0, debt status changed to SETTLED",
+        "AllocationApplied event published"
+      ],
+      "emitsEvent": [
+        "tax:AllocationApplied",
+        "tax:DebtSettled"
+      ],
+      "businessRule": [
+        "RG-008"
+      ]
+    },
+    {
+      "id": "tax:QueryTaxCreditBalance",
+      "type": "Action",
+      "name": "QueryTaxCreditBalance",
+      "description": "Query current tax credit balance for a citizen",
+      "from": "tax:Citizen",
+      "to": "tax:TaxCredit",
+      "precondition": [
+        "Citizen is authenticated",
+        "Citizen can only access their own data (RG-010)"
+      ],
+      "postcondition": [
+        "Current balance returned",
+        "Total prepayments returned",
+        "Total allocations returned"
+      ],
+      "businessRule": [
+        "RG-010"
+      ]
+    },
+    {
+      "id": "tax:ParseStructuredReference",
+      "type": "Operation",
+      "name": "ParseStructuredReference",
+      "description": "Parse structured reference from bank transfer to extract debt ID",
+      "from": "tax:Payment",
+      "to": "tax:Debt",
+      "precondition": [
+        "Structured reference matches pattern +++XXX/XXXX/XXXXX+++ (RG-004)"
+      ],
+      "postcondition": [
+        "Debt ID extracted from reference",
+        "Debt exists in system"
+      ],
+      "businessRule": [
+        "RG-004"
+      ]
+    },
+    {
+      "id": "tax:GenerateAccountingEntries",
+      "type": "Operation",
+      "name": "GenerateAccountingEntries",
+      "description": "Generate double-entry accounting entries for financial operations",
+      "from": "tax:Transaction",
+      "to": "tax:AccountingEntry",
+      "precondition": [
+        "Transaction is valid and complete",
+        "Chart of accounts is configured"
+      ],
+      "postcondition": [
+        "Accounting entries created with balanced debits and credits (RG-006)",
+        "Transaction ID links related entries",
+        "AccountingEntriesGenerated event published"
+      ],
+      "emitsEvent": [
+        "tax:AccountingEntriesGenerated"
+      ],
+      "businessRule": [
+        "RG-006",
+        "RG-007"
+      ]
+    },
+    {
+      "id": "tax:ApplyAllocationRules",
+      "type": "Operation",
+      "name": "ApplyAllocationRules",
+      "description": "Apply priority rules to determine allocation order for debts",
+      "from": "tax:AllocationRulesEngine",
+      "to": "tax:Debt",
+      "precondition": [
+        "Outstanding debts exist",
+        "Tax credit balance > 0"
+      ],
+      "postcondition": [
+        "Debts sorted by priority: 1) Debt age (oldest first), 2) Debt type (PENALTY > TAX_DEBT > ADMINISTRATIVE_FEE), 3) Creation date as tiebreaker",
+        "Allocations created in priority order",
+        "Partial allocations handled when credit insufficient"
+      ],
+      "businessRule": [
+        "RG-005"
+      ]
+    },
+    {
+      "id": "tax:RG-001",
+      "type": "Constraint",
+      "name": "RG-001: Prepayment Amount Validation",
+      "description": "Prepayment amount must be > 0 and ≤ 999,999.99",
+      "appliesTo": [
+        "tax:Prepayment"
+      ],
+      "validationRule": "amount > 0 AND amount <= 999999.99"
+    },
+    {
+      "id": "tax:RG-002",
+      "type": "Constraint",
+      "name": "RG-002: Tax Credit Balance Calculation",
+      "description": "Tax credit balance = Total prepayments - Total allocations",
+      "appliesTo": [
+        "tax:TaxCredit"
+      ],
+      "validationRule": "currentBalance = totalPrepayments - totalAllocations"
+    },
+    {
+      "id": "tax:RG-003",
+      "type": "Constraint",
+      "name": "RG-003: Idempotency",
+      "description": "Idempotency key ensures duplicate requests return same result",
+      "appliesTo": [
+        "tax:Prepayment"
+      ],
+      "validationRule": "idempotencyKey must be unique"
+    },
+    {
+      "id": "tax:RG-004",
+      "type": "Constraint",
+      "name": "RG-004: Structured Reference Format",
+      "description": "Structured reference format: +++XXX/XXXX/XXXXX+++",
+      "appliesTo": [
+        "tax:Payment"
+      ],
+      "validationRule": "structuredReference matches pattern ^\\+\\+\\+\\d{3}/\\d{4}/\\d{5}\\+\\+\\+$"
+    },
+    {
+      "id": "tax:RG-005",
+      "type": "Constraint",
+      "name": "RG-005: Allocation Priority Rules",
+      "description": "Automatic allocation prioritizes oldest debts first, then by debt type",
+      "appliesTo": [
+        "tax:Allocation",
+        "tax:Debt"
+      ],
+      "validationRule": "Sort by: 1) createdAt ASC, 2) debtType priority (PENALTY > TAX_DEBT > ADMINISTRATIVE_FEE)"
+    },
+    {
+      "id": "tax:RG-006",
+      "type": "Constraint",
+      "name": "RG-006: Accounting Balance",
+      "description": "Accounting entries must balance (Debit = Credit)",
+      "appliesTo": [
+        "tax:AccountingEntry"
+      ],
+      "validationRule": "SUM(amount WHERE entryType=DEBIT) = SUM(amount WHERE entryType=CREDIT) for same transactionId"
+    },
+    {
+      "id": "tax:RG-007",
+      "type": "Constraint",
+      "name": "RG-007: Currency Consistency",
+      "description": "All amounts in same transaction must use same currency",
+      "appliesTo": [
+        "tax:TaxCredit",
+        "tax:Payment",
+        "tax:Allocation",
+        "tax:Debt"
+      ],
+      "validationRule": "currency must be consistent across related entities in a transaction"
+    },
+    {
+      "id": "tax:RG-008",
+      "type": "Constraint",
+      "name": "RG-008: Allocation Amount Limit",
+      "description": "Allocation amount cannot exceed source balance",
+      "appliesTo": [
+        "tax:Allocation"
+      ],
+      "validationRule": "allocation.amount <= source.availableBalance"
+    },
+    {
+      "id": "tax:RG-009",
+      "type": "Constraint",
+      "name": "RG-009: Single Payment Allocation",
+      "description": "Payment can only be allocated once to a debt",
+      "appliesTo": [
+        "tax:Payment"
+      ],
+      "validationRule": "COUNT(allocations WHERE sourceType=PAYMENT AND sourceId=payment.id) <= 1"
+    },
+    {
+      "id": "tax:RG-010",
+      "type": "Constraint",
+      "name": "RG-010: Citizen Data Access",
+      "description": "Citizens can only access their own tax credits and payments",
+      "appliesTo": [
+        "tax:TaxCredit",
+        "tax:Payment",
+        "tax:Prepayment"
+      ],
+      "validationRule": "authenticatedCitizenId = entity.citizenId"
+    },
+    {
+      "id": "tax:EC-001",
+      "type": "Constraint",
+      "name": "EC-001: Concurrent Prepayments",
+      "description": "Concurrent prepayments handled via optimistic locking",
+      "appliesTo": [
+        "tax:TaxCredit"
+      ],
+      "validationRule": "Use version field for optimistic locking to prevent conflicts"
+    },
+    {
+      "id": "tax:EC-002",
+      "type": "Constraint",
+      "name": "EC-002: Payment for Settled Debt",
+      "description": "Payment for already settled debt returns error, no allocation",
+      "appliesTo": [
+        "tax:Payment",
+        "tax:Debt"
+      ],
+      "validationRule": "IF debt.status = SETTLED THEN return error API_ALLOCATION_DEBT_SETTLED"
+    },
+    {
+      "id": "tax:EC-003",
+      "type": "Constraint",
+      "name": "EC-003: Non-existent Debt Reference",
+      "description": "Structured reference for non-existent debt returns 404",
+      "appliesTo": [
+        "tax:Payment"
+      ],
+      "validationRule": "IF debt not found THEN return 404 API_PAYMENT_DEBT_NOT_FOUND"
+    },
+    {
+      "id": "tax:EC-004",
+      "type": "Constraint",
+      "name": "EC-004: Concurrent Allocation",
+      "description": "Allocation during debt update handled via transaction isolation",
+      "appliesTo": [
+        "tax:Allocation",
+        "tax:Debt"
+      ],
+      "validationRule": "Use transaction isolation to ensure consistency"
+    },
+    {
+      "id": "tax:EC-005",
+      "type": "Constraint",
+      "name": "EC-005: Accounting Service Failure",
+      "description": "Accounting service failure triggers rollback of entire transaction",
+      "appliesTo": [
+        "tax:AccountingEntry"
+      ],
+      "validationRule": "IF accounting service fails THEN rollback entire transaction"
+    },
+    {
+      "id": "tax:EC-006",
+      "type": "Constraint",
+      "name": "EC-006: Partial Allocation",
+      "description": "Partial allocation when credit < debt creates partial allocation",
+      "appliesTo": [
+        "tax:Allocation"
+      ],
+      "validationRule": "IF credit < debt.remainingBalance THEN allocation.amount = credit"
+    },
+    {
+      "id": "tax:EC-007",
+      "type": "Constraint",
+      "name": "EC-007: Priority Tiebreaker",
+      "description": "Multiple debts with same priority use debt creation date as tiebreaker",
+      "appliesTo": [
+        "tax:Debt"
+      ],
+      "validationRule": "IF priority equal THEN sort by createdAt ASC"
+    },
+    {
+      "id": "tax:TaxCreditActive",
+      "type": "State",
+      "name": "TaxCreditActive",
+      "description": "Tax credit account is active with available balance"
+    },
+    {
+      "id": "tax:TaxCreditDepleted",
+      "type": "State",
+      "name": "TaxCreditDepleted",
+      "description": "Tax credit balance is zero, all credit allocated"
+    },
+    {
+      "id": "tax:TaxCreditSuspended",
+      "type": "State",
+      "name": "TaxCreditSuspended",
+      "description": "Tax credit account is suspended due to citizen status"
+    },
+    {
+      "id": "tax:PrepaymentPending",
+      "type": "State",
+      "name": "PrepaymentPending",
+      "description": "Prepayment is being processed"
+    },
+    {
+      "id": "tax:PrepaymentCompleted",
+      "type": "State",
+      "name": "PrepaymentCompleted",
+      "description": "Prepayment has been successfully processed and added to tax credit"
+    },
+    {
+      "id": "tax:PrepaymentFailed",
+      "type": "State",
+      "name": "PrepaymentFailed",
+      "description": "Prepayment processing failed"
+    },
+    {
+      "id": "tax:PaymentReceived",
+      "type": "State",
+      "name": "PaymentReceived",
+      "description": "Bank transfer payment received from banking system"
+    },
+    {
+      "id": "tax:PaymentProcessing",
+      "type": "State",
+      "name": "PaymentProcessing",
+      "description": "Payment is being processed and validated"
+    },
+    {
+      "id": "tax:PaymentAllocated",
+      "type": "State",
+      "name": "PaymentAllocated",
+      "description": "Payment has been allocated to debt"
+    },
+    {
+      "id": "tax:PaymentFailed",
+      "type": "State",
+      "name": "PaymentFailed",
+      "description": "Payment processing failed"
+    },
+    {
+      "id": "tax:AllocationPending",
+      "type": "State",
+      "name": "AllocationPending",
+      "description": "Allocation created but not yet applied to debt"
+    },
+    {
+      "id": "tax:AllocationApplied",
+      "type": "State",
+      "name": "AllocationApplied",
+      "description": "Allocation has been applied to debt, reducing balance"
+    },
+    {
+      "id": "tax:AllocationReversed",
+      "type": "State",
+      "name": "AllocationReversed",
+      "description": "Allocation has been reversed (future feature)"
+    },
+    {
+      "id": "tax:DebtOutstanding",
+      "type": "State",
+      "name": "DebtOutstanding",
+      "description": "Debt is outstanding with full balance remaining"
+    },
+    {
+      "id": "tax:DebtPartiallyPaid",
+      "type": "State",
+      "name": "DebtPartiallyPaid",
+      "description": "Debt has been partially paid, balance remaining"
+    },
+    {
+      "id": "tax:DebtSettled",
+      "type": "State",
+      "name": "DebtSettled",
+      "description": "Debt has been fully settled, balance is zero"
+    }
+  ]
+}
