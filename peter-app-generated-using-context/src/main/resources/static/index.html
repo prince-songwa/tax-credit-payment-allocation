@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tax Credit Payment Allocation System</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>💰 Tax Credit Payment Allocation System</h1>
+            <p class="subtitle">Hexagonal Architecture Demo</p>
+        </header>
+
+        <div class="tabs">
+            <button class="tab-button active" onclick="showTab('prepayment')">Create Prepayment</button>
+            <button class="tab-button" onclick="showTab('payment')">Process Payment</button>
+            <button class="tab-button" onclick="showTab('balance')">Check Balance</button>
+            <button class="tab-button" onclick="showTab('debts')">View Debts</button>
+        </div>
+
+        <!-- Prepayment Tab -->
+        <div id="prepayment-tab" class="tab-content active">
+            <h2>Create Prepayment</h2>
+            <form id="prepayment-form">
+                <div class="form-group">
+                    <label for="prep-citizen-id">Citizen ID:</label>
+                    <input type="text" id="prep-citizen-id" placeholder="CIT-123456789" required>
+                </div>
+                <div class="form-group">
+                    <label for="prep-type">Type:</label>
+                    <select id="prep-type" required>
+                        <option value="VAT_PREPAYMENT">VAT Prepayment</option>
+                        <option value="ADVANCE_PAYMENT">Advance Payment</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="prep-amount">Amount (EUR):</label>
+                    <input type="number" id="prep-amount" step="0.01" min="0.01" max="999999.99" placeholder="1000.00" required>
+                </div>
+                <button type="submit" class="btn btn-primary">Create Prepayment</button>
+            </form>
+            <div id="prepayment-result" class="result"></div>
+        </div>
+
+        <!-- Payment Tab -->
+        <div id="payment-tab" class="tab-content">
+            <h2>Process Bank Transfer</h2>
+            <form id="payment-form">
+                <div class="form-group">
+                    <label for="bank-ref">Bank Reference:</label>
+                    <input type="text" id="bank-ref" placeholder="BANK-REF-12345" required>
+                </div>
+                <div class="form-group">
+                    <label for="structured-ref">Structured Reference:</label>
+                    <input type="text" id="structured-ref" placeholder="+++123/4567/89001+++" 
+                           pattern="\+\+\+\d{3}/\d{4}/\d{5}\+\+\+" required>
+                    <small>Format: +++XXX/XXXX/XXXXX+++</small>
+                </div>
+                <div class="form-group">
+                    <label for="pay-amount">Amount (EUR):</label>
+                    <input type="number" id="pay-amount" step="0.01" min="0.01" placeholder="500.00" required>
+                </div>
+                <div class="form-group">
+                    <label for="payment-date">Payment Date:</label>
+                    <input type="date" id="payment-date" required>
+                </div>
+                <div class="form-group">
+                    <label for="debtor-account">Debtor Account:</label>
+                    <input type="text" id="debtor-account" placeholder="BE12 3456 7890 1234" required>
+                </div>
+                <div class="form-group">
+                    <label for="debtor-name">Debtor Name:</label>
+                    <input type="text" id="debtor-name" placeholder="John Doe" required>
+                </div>
+                <button type="submit" class="btn btn-primary">Process Payment</button>
+            </form>
+            <div id="payment-result" class="result"></div>
+        </div>
+
+        <!-- Balance Tab -->
+        <div id="balance-tab" class="tab-content">
+            <h2>Check Tax Credit Balance</h2>
+            <form id="balance-form">
+                <div class="form-group">
+                    <label for="balance-citizen-id">Citizen ID:</label>
+                    <input type="text" id="balance-citizen-id" placeholder="CIT-123456789" required>
+                </div>
+                <button type="submit" class="btn btn-primary">Check Balance</button>
+            </form>
+            <div id="balance-result" class="result"></div>
+        </div>
+
+        <!-- Debts Tab -->
+        <div id="debts-tab" class="tab-content">
+            <h2>Sample Debts</h2>
+            <p>These are example debts for testing. In production, these would be loaded from the database.</p>
+            <div class="debt-list">
+                <div class="debt-card">
+                    <h3>DEBT-123-4567-89001</h3>
+                    <p><strong>Type:</strong> PENALTY</p>
+                    <p><strong>Amount:</strong> €500.00</p>
+                    <p><strong>Status:</strong> OUTSTANDING</p>
+                </div>
+                <div class="debt-card">
+                    <h3>DEBT-123-4567-89002</h3>
+                    <p><strong>Type:</strong> TAX_DEBT</p>
+                    <p><strong>Amount:</strong> €1,000.00</p>
+                    <p><strong>Status:</strong> OUTSTANDING</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
